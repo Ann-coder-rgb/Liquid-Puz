@@ -1,343 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { RotateCcw, Undo2, PlayCircle, Trophy, HelpCircle } from 'lucide-react';
-
-const COLORS = [
-  '#3b82f6', '#f97316', '#22c55e', '#eab308', 
-  '#a855f7', '#ef4444', '#06b6d4', '#94a3b8'
-];
-
-const MAX_LAYERS = 4;
-
-const App = () => {
-  const [tubes, setTubes] = useState([]);
-  const [initialTubes, setInitialTubes] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [targets, setTargets] = useState([]);
-  const [selectedIdx, setSelectedIdx] = useState(null);
-  const [animating, setAnimating] = useState(false);
-  const [pouringFrom, setPouringFrom] = useState(null); 
-  const [modal, setModal] = useState(null);
-
-  const generateNewLevel = () => {
-    let shuffledColors = [...COLORS].sort(() => Math.random() - 0.5);
-    const newTargets = shuffledColors.map(c => ({ color: c, gone: false }));
-    
-    let pool = [];
-    newTargets.forEach(t => {
-      for (let i = 0; i < MAX_LAYERS; i++) pool.push({ color: t.color, hidden: false });
-    });
-    pool.sort(() => Math.random() - 0.5);
-
-    const newTubes = [];
-    for (let i = 0; i < 8; i++) {
-      let layers = pool.splice(0, MAX_LAYERS);
-      layers[0].hidden = Math.random() > 0.4;
-      layers[1].hidden = Math.random() > 0.7;
-      newTubes.push(layers);
-    }
-    newTubes.push([], []);
-    
-    setTubes(newTubes);
-    setInitialTubes(JSON.parse(JSON.stringify(newTubes)));
-    setTargets(newTargets);
-    setHistory([]);
-    setModal(null);
-    setSelectedIdx(null);
-    setAnimating(false);
-    setPouringFrom(null);
-  };
-
-  const restartCurrentLevel = () => {
-    setTubes(JSON.parse(JSON.stringify(initialTubes)));
-    setTargets(prev => prev.map(t => ({ ...t, gone: false })));
-    setHistory([]);
-    setModal(null);
-    setSelectedIdx(null);
-    setAnimating(false);
-    setPouringFrom(null);
-  };
-
-  useEffect(() => {
-    generateNewLevel();
-  }, []);
-
-  const handleTubeClick = (idx) => {
-    if (animating || tubes[idx] === null) return;
-    if (selectedIdx === null) {
-      if (tubes[idx].length > 0) setSelectedIdx(idx);
-    } else {
-      if (selectedIdx === idx) {
-        setSelectedIdx(null);
-      } else {
-        checkAndAnimatePour(selectedIdx, idx);
-      }
-    }
-  };
-
-  const checkAndAnimatePour = (fromIdx, toIdx) => {
-    const from = tubes[fromIdx];
-    const to = tubes[toIdx];
-    const top = from[from.length - 1];
-    
-    const canPour = to.length < MAX_LAYERS && 
-                    (to.length === 0 || (to[to.length - 1].color === top.color && !to[to.length - 1].hidden));
-
-    if (canPour) {
-      executePourAnimation(fromIdx, toIdx);
-    } else {
-      setSelectedIdx(toIdx);
-    }
-  };
-
-  const executePourAnimation = async (fromIdx, toIdx) => {
-    setAnimating(true);
-    setSelectedIdx(null);
-
-    const fromEl = document.getElementById(`tube-wrapper-${fromIdx}`);
-    const toEl = document.getElementById(`tube-wrapper-${toIdx}`);
-
-    if (fromEl && toEl) {
-      const fromRect = fromEl.getBoundingClientRect();
-      const toRect = toEl.getBoundingClientRect();
-
-      // 計算對準瓶口的位移 (動態對位)
-      // 傾斜角度 85 度時，源瓶口應該正好落在目標瓶口中心上方
-      const deltaX = toRect.left - fromRect.left + (toRect.width * 0.1); 
-      const deltaY = toRect.top - fromRect.top - (fromRect.height * 0.6); 
-
-      setPouringFrom({ idx: fromIdx, targetIdx: toIdx, x: deltaX, y: deltaY });
-
-      setTimeout(() => {
-        const nextTubes = JSON.parse(JSON.stringify(tubes));
-        const fT = nextTubes[fromIdx];
-        const tT = nextTubes[toIdx];
-        const color = fT[fT.length - 1].color;
-
-        setHistory(prev => [...prev, JSON.parse(JSON.stringify(tubes))]);
-
-        while (fT.length > 0 && fT[fT.length - 1].color === color && !fT[fT.length - 1].hidden && tT.length < MAX_LAYERS) {
-          tT.push(fT.pop());
-        }
-        if (fT.length > 0) fT[fT.length - 1].hidden = false;
-
-        setTubes(nextTubes);
-
-        setTimeout(() => {
-          setPouringFrom(null);
-          setTimeout(() => {
-            setAnimating(false);
-            checkState(nextTubes, toIdx);
-          }, 400);
-        }, 600);
-      }, 500);
-    } else {
-      setAnimating(false);
-    }
-  };
-
-  const checkState = (currentTubes, lastToIdx) => {
-    const tube = currentTubes[lastToIdx];
-    if (tube && tube.length === MAX_LAYERS && tube.every(l => l.color === tube[0].color && !l.hidden)) {
-      const color = tube[0].color;
-      const targetIdx = targets.findIndex(t => t.color === color && !t.gone);
-      if (targetIdx !== -1) {
-        triggerFlight(lastToIdx, targetIdx, currentTubes);
-      }
-    }
-  };
-
-  const triggerFlight = (tubeIdx, targetIdx, currentTubes) => {
-    setAnimating(true);
-    const tubeEl = document.getElementById(`tube-wrapper-${tubeIdx}`);
-    const bagEl = document.getElementById(`bag-${targetIdx}`);
-    if (!tubeEl || !bagEl) return setAnimating(false);
-
-    const innerTube = tubeEl.querySelector('.tube-inner');
-    if (innerTube) innerTube.classList.add('ultra-glow');
-
-    setTimeout(() => {
-      const rectT = tubeEl.getBoundingClientRect();
-      const rectB = bagEl.getBoundingClientRect();
-
-      const clone = tubeEl.cloneNode(true);
-      clone.style.position = 'fixed';
-      clone.style.top = `${rectT.top}px`;
-      clone.style.left = `${rectT.left}px`;
-      clone.style.width = `${rectT.width}px`;
-      clone.style.height = `${rectT.height}px`;
-      clone.style.zIndex = '1000';
-      clone.style.transition = 'all 0.8s cubic-bezier(0.6, -0.2, 0.5, 1.2)';
-      document.body.appendChild(clone);
-
-      const nextTubes = [...currentTubes];
-      nextTubes[tubeIdx] = null;
-      setTubes(nextTubes);
-
-      requestAnimationFrame(() => {
-        clone.style.top = `${rectB.top}px`;
-        clone.style.left = `${rectB.left}px`;
-        clone.style.transform = 'scale(0.1) rotate(720deg)';
-        clone.style.opacity = '0';
-      });
-
-      setTimeout(() => {
-        clone.remove();
-        bagEl.classList.add('bag-bump');
-        setTimeout(() => {
-          const nextTargets = [...targets];
-          nextTargets[targetIdx].gone = true;
-          setTargets(nextTargets);
-          setAnimating(false);
-          if (nextTargets.every(t => t.gone)) setModal('win');
-        }, 600);
-      }, 800);
-    }, 800);
-  };
-
-  const undo = () => {
-    if (history.length > 0 && !animating) {
-      setTubes(history[history.length - 1]);
-      setHistory(prev => prev.slice(0, -1));
-      setModal(null);
-      setSelectedIdx(null);
-    }
-  };
-
-  return (
-    <div className="flex flex-col md:flex-row h-screen w-full bg-[#3d2212] overflow-hidden select-none relative"
-         style={{ 
-           backgroundImage: `
-             linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), 
-             repeating-linear-gradient(90deg, transparent, transparent 60px, rgba(0,0,0,0.1) 60px, rgba(0,0,0,0.1) 62px),
-             linear-gradient(to right, #4d2c19, #5d3a24, #4d2c19)
-           `
-         }}>
-      
-      <div className="flex-grow flex flex-col h-full overflow-hidden">
-        <div className="p-3 md:p-4 flex justify-between items-center shrink-0">
-          <div>
-            <h1 className="text-yellow-400 font-black text-xl md:text-2xl italic leading-none drop-shadow-lg">Water</h1>
-            <p className="text-white font-bold text-[9px] md:text-xs opacity-50">3D Liquid Puz • Premium Wood Edition</p>
-          </div>
-          <div className="bg-white/5 px-2 py-0.5 rounded border border-white/10 text-[8px] md:text-[9px] text-white/40 font-bold uppercase tracking-widest">
-            Ultra Layout
-          </div>
-        </div>
-
-        <div className="flex flex-nowrap justify-start md:justify-center gap-1.5 px-4 py-2 min-h-[50px] md:min-h-[85px] overflow-x-auto no-scrollbar scroll-smooth">
-          {targets.map((t, i) => !t.gone && (
-            <div key={i} id={`bag-${i}`} className="shrink-0 relative w-5 h-8 md:w-7 md:h-11 bg-white rounded-md border-[1.5px] border-yellow-500 shadow-md flex items-center justify-center">
-              <div className="absolute -top-1.5 md:-top-2.5 w-3.5 md:w-4.5 h-2.5 md:h-3.5 border-[1.5px] border-yellow-500 border-b-0 rounded-t-lg"></div>
-              <div className="w-3 md:w-3.5 h-5 md:h-6 rounded-sm shadow-inner" style={{ backgroundColor: t.color }}></div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex-grow grid grid-cols-5 sm:grid-cols-5 gap-y-6 md:gap-y-12 gap-x-1 md:gap-x-2 p-2 md:p-6 place-content-center overflow-y-auto max-w-2xl mx-auto w-full no-scrollbar">
-          {tubes.map((layers, idx) => (
-            <div key={idx} className="flex justify-center h-28 md:h-36">
-              {layers !== null && (
-                <div 
-                  id={`tube-wrapper-${idx}`}
-                  style={{
-                    transform: pouringFrom?.idx === idx 
-                      ? `translate(${pouringFrom.x}px, ${pouringFrom.y}px) rotate(85deg)` 
-                      : 'translate(0,0) rotate(0deg)',
-                    transformOrigin: 'top center', 
-                    transition: pouringFrom?.idx === idx ? 'transform 0.5s cubic-bezier(0.45, 0, 0.55, 1)' : 'transform 0.4s ease-out',
-                    zIndex: pouringFrom?.idx === idx ? 100 : (selectedIdx === idx ? 50 : 10)
-                  }}
-                  className="relative w-9 h-26 md:w-11 md:h-32 flex flex-col-reverse items-center cursor-pointer overflow-visible"
-                >
-                  <div 
-                    id={`tube-${idx}`}
-                    onClick={() => handleTubeClick(idx)}
-                    className={`tube-inner relative w-full h-full flex flex-col-reverse items-center rounded-b-2xl border-2 border-white/20 bg-white/5 transition-all duration-300
-                      ${selectedIdx === idx ? '-translate-y-4 scale-105 border-white ring-8 ring-white/10' : 'shadow-2xl'}
-                    `}
-                    style={{
-                      boxShadow: 'inset 0 0 10px rgba(255,255,255,0.1), 5px 10px 20px rgba(0,0,0,0.5)'
-                    }}
-                  >
-                    <div className="absolute -top-3.5 w-7 h-3.5 border-2 border-white/30 border-b-0 rounded-t-md bg-white/5">
-                      <div className="absolute top-0 left-0 w-full h-0.5 bg-white/20"></div>
-                    </div>
-                    
-                    <div className="w-full h-full rounded-b-2xl overflow-hidden flex flex-col-reverse relative">
-                      {layers.map((l, lIdx) => (
-                        <div key={lIdx} className="w-full h-1/4 border-t border-white/5 relative" style={{ backgroundColor: l.hidden ? '#1a1a1a' : l.color }}>
-                          {l.hidden && <div className="absolute inset-0 flex items-center justify-center text-white/20 font-bold text-[9px]">?</div>}
-                          {!l.hidden && (
-                            <>
-                               <div className="absolute top-0 left-0 w-full h-0.5 bg-white/10"></div>
-                               <div className="absolute bottom-0 left-0 w-full h-1.5 bg-black/10"></div>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                      <div className="absolute inset-0 pointer-events-none">
-                        <div className="absolute left-1.5 top-2 bottom-2 w-1.5 bg-gradient-to-r from-white/25 to-transparent rounded-full"></div>
-                        <div className="absolute right-0 top-0 bottom-0 w-2 bg-black/15"></div>
-                        <div className="absolute left-4 top-2 w-2 h-2 bg-white/15 rounded-full blur-[0.5px]"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="md:w-16 w-full h-16 md:h-full shrink-0 bg-black/80 backdrop-blur-3xl border-t md:border-t-0 md:border-l border-white/10 flex flex-row md:flex-col items-center justify-center md:py-8 gap-12 md:gap-8 z-[110] px-8 md:px-0">
-        <button onClick={() => setModal('confirm_new')} className="group relative w-10 h-10 md:w-11 md:h-11 bg-yellow-600 rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition-all border-b-4 border-yellow-800">
-          <PlayCircle size={22} className="text-white" />
-        </button>
-
-        <button onClick={() => setModal('confirm_restart')} className="group relative w-10 h-10 md:w-11 md:h-11 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition-all border-b-4 border-blue-800">
-          <RotateCcw size={22} className="text-white" />
-        </button>
-
-        <button onClick={undo} disabled={history.length === 0} className={`group relative w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition-all border-b-4 ${history.length === 0 ? 'bg-gray-800 border-gray-900 opacity-20' : 'bg-indigo-600 border-indigo-800'}`}>
-          <Undo2 size={22} className="text-white" />
-        </button>
-      </div>
-
-      {modal && (
-        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] p-6 text-center max-w-xs w-full shadow-2xl animate-in fade-in zoom-in duration-200">
-            {modal === 'win' && (
-              <>
-                <Trophy size={50} className="mx-auto text-yellow-500 mb-4" />
-                <h2 className="text-2xl font-black mb-1 italic">任務清空！</h2>
-                <button onClick={generateNewLevel} className="mt-6 w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl text-lg shadow-lg">下一關</button>
-              </>
-            )}
-            {modal === 'confirm_new' && (
-              <>
-                <PlayCircle size={40} className="mx-auto text-yellow-600 mb-4" />
-                <h2 className="text-xl font-black mb-1">開啟新局？</h2>
-                <div className="flex gap-2 mt-6">
-                  <button onClick={() => setModal(null)} className="flex-1 bg-gray-100 font-bold py-2.5 rounded-xl text-gray-600">取消</button>
-                  <button onClick={generateNewLevel} className="flex-1 bg-yellow-600 text-white font-bold py-2.5 rounded-xl">確定</button>
-                </div>
-              </>
-            )}
-            {modal === 'confirm_restart' && (
-              <>
-                <RotateCcw size={40} className="mx-auto text-blue-600 mb-4" />
-                <h2 className="text-xl font-black mb-1">重玩本關？</h2>
-                <div className="flex gap-2 mt-6">
-                  <button onClick={() => setModal(null)} className="flex-1 bg-gray-100 font-bold py-2.5 rounded-xl text-gray-600">取消</button>
-                  <button onClick={restartCurrentLevel} className="flex-1 bg-blue-600 text-white font-bold py-2.5 rounded-xl">確定</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      <style>{`
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Sort - Premium Edition</title>
+    <!-- 核心套件：React, Babel, Tailwind CSS -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 圖示庫 -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
@@ -354,9 +28,363 @@ const App = () => {
           100% { transform: scale(1); }
         }
         .bag-bump { animation: bag-bump 0.5s ease-out; }
-      `}</style>
-    </div>
-  );
-};
 
-export default App;
+        body { margin: 0; padding: 0; background-color: #3d2212; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // 定義簡單的 SVG 圖示元件 (代替 Lucide 避免 CDN 載入問題)
+        const Icon = ({ name, size = 24, className = "" }) => {
+            return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
+        };
+
+        const COLORS = [
+            '#3b82f6', '#f97316', '#22c55e', '#eab308', 
+            '#a855f7', '#ef4444', '#06b6d4', '#94a3b8'
+        ];
+        const MAX_LAYERS = 4;
+
+        const App = () => {
+            const [tubes, setTubes] = useState([]);
+            const [initialTubes, setInitialTubes] = useState([]);
+            const [history, setHistory] = useState([]);
+            const [targets, setTargets] = useState([]);
+            const [selectedIdx, setSelectedIdx] = useState(null);
+            const [animating, setAnimating] = useState(false);
+            const [pouringFrom, setPouringFrom] = useState(null); 
+            const [modal, setModal] = useState(null);
+
+            // 當 React 渲染完後，初始化圖示
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }, [modal, tubes]);
+
+            const generateNewLevel = () => {
+                let shuffledColors = [...COLORS].sort(() => Math.random() - 0.5);
+                const newTargets = shuffledColors.map(c => ({ color: c, gone: false }));
+                
+                let pool = [];
+                newTargets.forEach(t => {
+                    for (let i = 0; i < MAX_LAYERS; i++) pool.push({ color: t.color, hidden: false });
+                });
+                pool.sort(() => Math.random() - 0.5);
+
+                const newTubes = [];
+                for (let i = 0; i < 8; i++) {
+                    let layers = pool.splice(0, MAX_LAYERS);
+                    layers[0].hidden = Math.random() > 0.4;
+                    layers[1].hidden = Math.random() > 0.7;
+                    newTubes.push(layers);
+                }
+                newTubes.push([], []);
+                
+                setTubes(newTubes);
+                setInitialTubes(JSON.parse(JSON.stringify(newTubes)));
+                setTargets(newTargets);
+                setHistory([]);
+                setModal(null);
+                setSelectedIdx(null);
+                setAnimating(false);
+                setPouringFrom(null);
+            };
+
+            const restartCurrentLevel = () => {
+                setTubes(JSON.parse(JSON.stringify(initialTubes)));
+                setTargets(prev => prev.map(t => ({ ...t, gone: false })));
+                setHistory([]);
+                setModal(null);
+                setSelectedIdx(null);
+                setAnimating(false);
+                setPouringFrom(null);
+            };
+
+            useEffect(() => {
+                generateNewLevel();
+            }, []);
+
+            const handleTubeClick = (idx) => {
+                if (animating || tubes[idx] === null) return;
+                if (selectedIdx === null) {
+                    if (tubes[idx].length > 0) setSelectedIdx(idx);
+                } else {
+                    if (selectedIdx === idx) {
+                        setSelectedIdx(null);
+                    } else {
+                        checkAndAnimatePour(selectedIdx, idx);
+                    }
+                }
+            };
+
+            const checkAndAnimatePour = (fromIdx, toIdx) => {
+                const from = tubes[fromIdx];
+                const to = tubes[toIdx];
+                if (!from || from.length === 0) return;
+                
+                const top = from[from.length - 1];
+                const canPour = to.length < MAX_LAYERS && 
+                                (to.length === 0 || (to[to.length - 1].color === top.color && !to[to.length - 1].hidden));
+
+                if (canPour) {
+                    executePourAnimation(fromIdx, toIdx);
+                } else {
+                    setSelectedIdx(toIdx);
+                }
+            };
+
+            const executePourAnimation = async (fromIdx, toIdx) => {
+                setAnimating(true);
+                setSelectedIdx(null);
+
+                const fromEl = document.getElementById(`tube-wrapper-${fromIdx}`);
+                const toEl = document.getElementById(`tube-wrapper-${toIdx}`);
+
+                if (fromEl && toEl) {
+                    const fromRect = fromEl.getBoundingClientRect();
+                    const toRect = toEl.getBoundingClientRect();
+                    const deltaX = toRect.left - fromRect.left + (toRect.width * 0.1); 
+                    const deltaY = toRect.top - fromRect.top - (fromRect.height * 0.6); 
+
+                    setPouringFrom({ idx: fromIdx, targetIdx: toIdx, x: deltaX, y: deltaY });
+
+                    setTimeout(() => {
+                        const nextTubes = JSON.parse(JSON.stringify(tubes));
+                        const fT = nextTubes[fromIdx];
+                        const tT = nextTubes[toIdx];
+                        const color = fT[fT.length - 1].color;
+
+                        setHistory(prev => [...prev, JSON.parse(JSON.stringify(tubes))]);
+
+                        while (fT.length > 0 && fT[fT.length - 1].color === color && !fT[fT.length - 1].hidden && tT.length < MAX_LAYERS) {
+                            tT.push(fT.pop());
+                        }
+                        if (fT.length > 0) fT[fT.length - 1].hidden = false;
+
+                        setTubes(nextTubes);
+
+                        setTimeout(() => {
+                            setPouringFrom(null);
+                            setTimeout(() => {
+                                setAnimating(false);
+                                checkState(nextTubes, toIdx);
+                            }, 400);
+                        }, 600);
+                    }, 500);
+                } else {
+                    setAnimating(false);
+                }
+            };
+
+            const checkState = (currentTubes, lastToIdx) => {
+                const tube = currentTubes[lastToIdx];
+                if (tube && tube.length === MAX_LAYERS && tube.every(l => l.color === tube[0].color && !l.hidden)) {
+                    const color = tube[0].color;
+                    const targetIdx = targets.findIndex(t => t.color === color && !t.gone);
+                    if (targetIdx !== -1) {
+                        triggerFlight(lastToIdx, targetIdx, currentTubes);
+                    }
+                }
+            };
+
+            const triggerFlight = (tubeIdx, targetIdx, currentTubes) => {
+                setAnimating(true);
+                const tubeEl = document.getElementById(`tube-wrapper-${tubeIdx}`);
+                const bagEl = document.getElementById(`bag-${targetIdx}`);
+                if (!tubeEl || !bagEl) return setAnimating(false);
+
+                const innerTube = tubeEl.querySelector('.tube-inner');
+                if (innerTube) innerTube.classList.add('ultra-glow');
+
+                setTimeout(() => {
+                    const rectT = tubeEl.getBoundingClientRect();
+                    const rectB = bagEl.getBoundingClientRect();
+
+                    const clone = tubeEl.cloneNode(true);
+                    clone.style.position = 'fixed';
+                    clone.style.top = `${rectT.top}px`;
+                    clone.style.left = `${rectT.left}px`;
+                    clone.style.width = `${rectT.width}px`;
+                    clone.style.height = `${rectT.height}px`;
+                    clone.style.zIndex = '1000';
+                    clone.style.transition = 'all 0.8s cubic-bezier(0.6, -0.2, 0.5, 1.2)';
+                    document.body.appendChild(clone);
+
+                    const nextTubes = [...currentTubes];
+                    nextTubes[tubeIdx] = null;
+                    setTubes(nextTubes);
+
+                    requestAnimationFrame(() => {
+                        clone.style.top = `${rectB.top}px`;
+                        clone.style.left = `${rectB.left}px`;
+                        clone.style.transform = 'scale(0.1) rotate(720deg)';
+                        clone.style.opacity = '0';
+                    });
+
+                    setTimeout(() => {
+                        clone.remove();
+                        bagEl.classList.add('bag-bump');
+                        setTimeout(() => {
+                            const nextTargets = [...targets];
+                            nextTargets[targetIdx].gone = true;
+                            setTargets(nextTargets);
+                            setAnimating(false);
+                            if (nextTargets.every(t => t.gone)) setModal('win');
+                        }, 600);
+                    }, 800);
+                }, 800);
+            };
+
+            const undo = () => {
+                if (history.length > 0 && !animating) {
+                    setTubes(history[history.length - 1]);
+                    setHistory(prev => prev.slice(0, -1));
+                    setModal(null);
+                    setSelectedIdx(null);
+                }
+            };
+
+            return (
+                <div className="flex flex-col md:flex-row h-screen w-full bg-[#3d2212] overflow-hidden select-none relative"
+                     style={{ 
+                       backgroundImage: `
+                         linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), 
+                         repeating-linear-gradient(90deg, transparent, transparent 60px, rgba(0,0,0,0.1) 60px, rgba(0,0,0,0.1) 62px),
+                         linear-gradient(to right, #4d2c19, #5d3a24, #4d2c19)
+                       `
+                     }}>
+                  
+                  <div className="flex-grow flex flex-col h-full overflow-hidden">
+                    <div className="p-3 md:p-4 flex justify-between items-center shrink-0">
+                      <div>
+                        <h1 className="text-yellow-400 font-black text-xl md:text-2xl italic leading-none drop-shadow-lg">Water Sort</h1>
+                        <p className="text-white font-bold text-[9px] md:text-xs opacity-50">Premium Wood Edition</p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-nowrap justify-start md:justify-center gap-1.5 px-4 py-2 min-h-[50px] md:min-h-[85px] overflow-x-auto no-scrollbar scroll-smooth">
+                      {targets.map((t, i) => !t.gone && (
+                        <div key={i} id={`bag-${i}`} className="shrink-0 relative w-5 h-8 md:w-7 md:h-11 bg-white rounded-md border-[1.5px] border-yellow-500 shadow-md flex items-center justify-center">
+                          <div className="absolute -top-1.5 md:-top-2.5 w-3.5 md:w-4.5 h-2.5 md:h-3.5 border-[1.5px] border-yellow-500 border-b-0 rounded-t-lg"></div>
+                          <div className="w-3 md:w-3.5 h-5 md:h-6 rounded-sm shadow-inner" style={{ backgroundColor: t.color }}></div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex-grow grid grid-cols-5 gap-y-6 md:gap-y-12 gap-x-1 md:gap-x-2 p-2 md:p-6 place-content-center overflow-y-auto max-w-2xl mx-auto w-full no-scrollbar">
+                      {tubes.map((layers, idx) => (
+                        <div key={idx} className="flex justify-center h-28 md:h-36">
+                          {layers !== null && (
+                            <div 
+                              id={`tube-wrapper-${idx}`}
+                              style={{
+                                transform: pouringFrom?.idx === idx 
+                                  ? `translate(${pouringFrom.x}px, ${pouringFrom.y}px) rotate(85deg)` 
+                                  : 'translate(0,0) rotate(0deg)',
+                                transformOrigin: 'top center', 
+                                transition: pouringFrom?.idx === idx ? 'transform 0.5s cubic-bezier(0.45, 0, 0.55, 1)' : 'transform 0.4s ease-out',
+                                zIndex: pouringFrom?.idx === idx ? 100 : (selectedIdx === idx ? 50 : 10)
+                              }}
+                              className="relative w-9 h-26 md:w-11 md:h-32 flex flex-col-reverse items-center cursor-pointer overflow-visible"
+                            >
+                              <div 
+                                id={`tube-${idx}`}
+                                onClick={() => handleTubeClick(idx)}
+                                className={`tube-inner relative w-full h-full flex flex-col-reverse items-center rounded-b-2xl border-2 border-white/20 bg-white/5 transition-all duration-300
+                                  ${selectedIdx === idx ? '-translate-y-4 scale-105 border-white ring-8 ring-white/10' : 'shadow-2xl'}
+                                `}
+                                style={{
+                                  boxShadow: 'inset 0 0 10px rgba(255,255,255,0.1), 5px 10px 20px rgba(0,0,0,0.5)'
+                                }}
+                              >
+                                <div className="absolute -top-3.5 w-7 h-3.5 border-2 border-white/30 border-b-0 rounded-t-md bg-white/5">
+                                  <div className="absolute top-0 left-0 w-full h-0.5 bg-white/20"></div>
+                                </div>
+                                
+                                <div className="w-full h-full rounded-b-2xl overflow-hidden flex flex-col-reverse relative">
+                                  {layers.map((l, lIdx) => (
+                                    <div key={lIdx} className="w-full h-1/4 border-t border-white/5 relative" style={{ backgroundColor: l.hidden ? '#1a1a1a' : l.color }}>
+                                      {l.hidden && <div className="absolute inset-0 flex items-center justify-center text-white/20 font-bold text-[9px]">?</div>}
+                                      {!l.hidden && (
+                                        <>
+                                           <div className="absolute top-0 left-0 w-full h-0.5 bg-white/10"></div>
+                                           <div className="absolute bottom-0 left-0 w-full h-1.5 bg-black/10"></div>
+                                        </>
+                                      )}
+                                    </div>
+                                  ))}
+                                  <div className="absolute inset-0 pointer-events-none">
+                                    <div className="absolute left-1.5 top-2 bottom-2 w-1.5 bg-gradient-to-r from-white/25 to-transparent rounded-full"></div>
+                                    <div className="absolute right-0 top-0 bottom-0 w-2 bg-black/15"></div>
+                                    <div className="absolute left-4 top-2 w-2 h-2 bg-white/15 rounded-full blur-[0.5px]"></div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="md:w-16 w-full h-16 md:h-full shrink-0 bg-black/80 backdrop-blur-3xl border-t md:border-t-0 md:border-l border-white/10 flex flex-row md:flex-col items-center justify-center md:py-8 gap-12 md:gap-8 z-[110] px-8 md:px-0">
+                    <button onClick={() => setModal('confirm_new')} className="group relative w-10 h-10 md:w-11 md:h-11 bg-yellow-600 rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition-all border-b-4 border-yellow-800">
+                      <Icon name="play-circle" className="text-white" />
+                    </button>
+
+                    <button onClick={() => setModal('confirm_restart')} className="group relative w-10 h-10 md:w-11 md:h-11 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition-all border-b-4 border-blue-800">
+                      <Icon name="rotate-ccw" className="text-white" />
+                    </button>
+
+                    <button onClick={undo} disabled={history.length === 0} className={`group relative w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition-all border-b-4 ${history.length === 0 ? 'bg-gray-800 border-gray-900 opacity-20' : 'bg-indigo-600 border-indigo-800'}`}>
+                      <Icon name="undo-2" className="text-white" />
+                    </button>
+                  </div>
+
+                  {modal && (
+                    <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-md flex items-center justify-center p-4">
+                      <div className="bg-white rounded-[2rem] p-6 text-center max-w-xs w-full shadow-2xl">
+                        {modal === 'win' && (
+                          <>
+                            <div className="flex justify-center mb-4"><Icon name="trophy" size={50} className="text-yellow-500" /></div>
+                            <h2 className="text-2xl font-black mb-1 italic">任務清空！</h2>
+                            <button onClick={generateNewLevel} className="mt-6 w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl text-lg shadow-lg">下一關</button>
+                          </>
+                        )}
+                        {modal === 'confirm_new' && (
+                          <>
+                            <div className="flex justify-center mb-4"><Icon name="play-circle" size={40} className="text-yellow-600" /></div>
+                            <h2 className="text-xl font-black mb-1">開啟新局？</h2>
+                            <div className="flex gap-2 mt-6">
+                              <button onClick={() => setModal(null)} className="flex-1 bg-gray-100 font-bold py-2.5 rounded-xl text-gray-600">取消</button>
+                              <button onClick={generateNewLevel} className="flex-1 bg-yellow-600 text-white font-bold py-2.5 rounded-xl">確定</button>
+                            </div>
+                          </>
+                        )}
+                        {modal === 'confirm_restart' && (
+                          <>
+                            <div className="flex justify-center mb-4"><Icon name="rotate-ccw" size={40} className="text-blue-600" /></div>
+                            <h2 className="text-xl font-black mb-1">重玩本關？</h2>
+                            <div className="flex gap-2 mt-6">
+                              <button onClick={() => setModal(null)} className="flex-1 bg-gray-100 font-bold py-2.5 rounded-xl text-gray-600">取消</button>
+                              <button onClick={restartCurrentLevel} className="flex-1 bg-blue-600 text-white font-bold py-2.5 rounded-xl">確定</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
