@@ -322,7 +322,7 @@
                         <div className="relative z-10 p-3 md:p-4 flex justify-between items-center shrink-0 pointer-events-none">
                             <div className="pointer-events-auto">
                                 <h1 className="text-yellow-400 font-black text-xl md:text-2xl italic leading-none drop-shadow-lg">3D Liquid Puz</h1>
-                                <p className="text-white font-bold text-[9px] md:text-xs opacity-50">—— 甲方要求色彩一致</p>
+                                <p className="text-white font-bold text-[9px] md:text-xs opacity-50">📜 甲方要求色彩一致</p>
                             </div>
                             <div className="bg-white/5 px-2 py-0.5 rounded border border-white/10 text-[8px] md:text-[9px] text-white/40 font-bold uppercase tracking-widest pointer-events-auto">
                                 Cheers 🥂
@@ -391,7 +391,7 @@
                     {modal && (
                         <div className="fixed inset-0 z-[10000] bg-black/95 backdrop-blur-md flex items-center justify-center p-4">
                             <div className="bg-white rounded-[2rem] p-6 text-center max-w-xs w-full shadow-2xl">
-                                {modal === 'win' && (<><div className="flex justify-center mb-4 text-yellow-500"><IconTrophy /></div><h2 className="text-2xl font-black mb-1 italic text-gray-800">任務清空！</h2><button onClick={generateNewLevel} className="mt-6 w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl text-lg shadow-lg">下一關</button></>)}
+                                {modal === 'win' && (<><div className="flex justify-center mb-4 text-yellow-500"><IconTrophy /></div><h2 className="text-2xl font-black mb-1 italic text-gray-800">任務完成！</h2><p className="text-sm text-gray-400 font-bold tracking-wider">甲方表示非常滿意！</p><button onClick={generateNewLevel} className="mt-6 w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl text-lg shadow-lg">下一關</button></>)}
                                 {modal === 'confirm_new' && (<><h2 className="text-xl font-black mb-1 text-gray-800">開啟新局？</h2><div className="flex gap-2 mt-6"><button onClick={() => setModal(null)} className="flex-1 bg-gray-100 font-bold py-2.5 rounded-xl text-gray-600">取消</button><button onClick={generateNewLevel} className="flex-1 bg-yellow-600 text-white font-bold py-2.5 rounded-xl">確定</button></div></>)}
                                 {modal === 'confirm_restart' && (<><h2 className="text-xl font-black mb-1 text-gray-800">重玩本關？</h2><div className="flex gap-2 mt-6"><button onClick={() => setModal(null)} className="flex-1 bg-gray-100 font-bold py-2.5 rounded-xl text-gray-600">取消</button><button onClick={restartCurrentLevel} className="flex-1 bg-blue-600 text-white font-bold py-2.5 rounded-xl">確定</button></div></>)}
                             </div>
