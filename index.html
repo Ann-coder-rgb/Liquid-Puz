@@ -87,23 +87,12 @@
             osc.stop(time + 0.1);
         };
 
+        // 倒水音效：僅保留氣泡聲，保持聽感乾淨
         const playPourSound = () => {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             const now = audioCtx.currentTime;
-            const source = audioCtx.createBufferSource();
-            source.buffer = getNoiseBuffer();
-            const filter = audioCtx.createBiquadFilter();
-            const gain = audioCtx.createGain();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(400, now);
-            filter.frequency.exponentialRampToValueAtTime(1200, now + 0.2);
-            gain.gain.setValueAtTime(0, now);
-            gain.gain.linearRampToValueAtTime(0.05, now + 0.1);
-            gain.gain.linearRampToValueAtTime(0, now + 0.6);
-            source.connect(filter);
-            filter.connect(gain);
-            gain.connect(audioCtx.destination);
-            source.start(now);
+
+            // 隨機氣泡音效 (Upgraded Bubble Layer)
             for (let i = 0; i < 7; i++) {
                 const delay = i * 0.07 + Math.random() * 0.05;
                 const freq = 300 + Math.random() * 500;
@@ -111,46 +100,43 @@
             }
         };
 
-        // 核心改進：清脆乾杯音效 (Crystal Cheers Clink)
+        // 清脆乾杯音效 (Crystal Clink) - 體感音量已調降
         const playCompleteSound = () => {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             const now = audioCtx.currentTime;
             
-            // 1. 模擬碰撞的瞬態噪音 (Impact Attack)
+            // 1. 瞬態碰撞衝擊 (Initial Impact) - 調降至 0.03
             const noise = audioCtx.createBufferSource();
             noise.buffer = getNoiseBuffer();
             const noiseFilter = audioCtx.createBiquadFilter();
             const noiseGain = audioCtx.createGain();
-            
             noiseFilter.type = 'highpass';
             noiseFilter.frequency.setValueAtTime(5000, now);
-            noiseGain.gain.setValueAtTime(0.1, now);
+            noiseGain.gain.setValueAtTime(0.03, now);
             noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
-            
             noise.connect(noiseFilter);
             noiseFilter.connect(noiseGain);
             noiseGain.connect(audioCtx.destination);
             noise.start(now);
             noise.stop(now + 0.02);
 
-            // 2. 模擬玻璃共振的高頻叮聲 (Resonant Tine)
-            // 使用兩個頻率接近的高頻正弦波，產生自然物理的共振效果
+            // 2. 玻璃共振叮聲 (Resonant Tine)
             const freqs = [2800, 2815, 3500]; 
             freqs.forEach((f, i) => {
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
-                
                 osc.type = 'sine';
                 osc.frequency.setValueAtTime(f, now);
                 
                 gain.gain.setValueAtTime(0, now);
-                gain.gain.linearRampToValueAtTime(0.15 / (i + 1), now + 0.005);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+                // 核心修改：0.084 * 0.6 ≈ 0.05
+                gain.gain.linearRampToValueAtTime(0.05 / (i + 1), now + 0.005);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 1.2); 
                 
                 osc.connect(gain);
                 gain.connect(audioCtx.destination);
                 osc.start(now);
-                osc.stop(now + 1);
+                osc.stop(now + 1.2);
             });
         };
 
@@ -339,7 +325,7 @@
                                 <p className="text-white font-bold text-[9px] md:text-xs opacity-50">—— 甲方要求色彩一致</p>
                             </div>
                             <div className="bg-white/5 px-2 py-0.5 rounded border border-white/10 text-[8px] md:text-[9px] text-white/40 font-bold uppercase tracking-widest pointer-events-auto">
-                                Cheers! 🥂
+                                Cheers 🥂
                             </div>
                         </div>
 
